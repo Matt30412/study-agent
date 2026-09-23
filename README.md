@@ -37,11 +37,13 @@ successive prima di rispondere.
 
 | File | Responsabilità |
 |---|---|
+| `src/config.py` | Tutte le costanti di configurazione, in un solo posto. |
 | `src/ingestion.py` | PDF → chunk → embedding → Qdrant. Si lancia una volta. |
 | `src/retrieval.py` | Connessione alla collection esistente, costruisce il retriever. |
 | `src/tools.py` | I tre tool a disposizione dell'agente. |
 | `src/agents.py` | Il grafo LangGraph. Anche CLI standalone. |
 | `src/app.py` | Interfaccia web Gradio. |
+| `eval/run_eval.py` | Misura il retrieval sull'eval set (`eval/dataset.json`). |
 
 ### Tool disponibili
 
@@ -84,6 +86,55 @@ uv run python -m src.app
 
 Per la CLI invece della UI web: `uv run python -m src.agents`
 
+Per misurare il retrieval (serve solo Qdrant, non Ollama): `uv run python -m eval.run_eval`
+
+---
+
+## Qualità del retrieval
+
+Misurata su `eval/dataset.json`: 30 domande sui 4 PDF del corso, ognuna con file e
+pagine attese verificate sul PDF. Le domande sono scritte come le porrebbe uno
+studente, non ricopiando i titoli delle slide, e alcune sono difficili apposta:
+sinonimi che il corso non usa ("visita in larghezza", "DFS"), acronimi, e domande in
+italiano su `12_ML.pdf`, che è in inglese.
+
+L'eval chiama direttamente il retriever, senza LLM: è deterministico, gira in pochi
+secondi e non cambia se cambia il modello generativo.
+
+- **hit-rate@k**: frazione di domande con almeno un chunk giusto nei primi k.
+- **MRR@k**: media di `1/rango` del primo chunk giusto (0 se assente). Premia il chunk
+  giusto *in cima*.
+
+| k | `all-MiniLM-L6-v2` hit-rate | MRR | `paraphrase-multilingual-MiniLM-L12-v2` hit-rate | MRR |
+|---:|---:|---:|---:|---:|
+| 1 | 0.20 | 0.20 | **0.37** | **0.37** |
+| 3 | 0.33 | 0.27 | **0.57** | **0.46** |
+| 5 | 0.43 | 0.29 | **0.70** | **0.49** |
+| 10 | 0.60 | 0.31 | **0.73** | **0.49** |
+
+In produzione `RETRIEVER_K = 3`, quindi la riga che conta è k=3. Hit@3 per PDF:
+
+| PDF | Domande | MiniLM-L6 | multilingual |
+|---|---:|---:|---:|
+| `12_ML.pdf` (inglese) | 6 | 0 | 5 |
+| `2_Agenti_Intelligenti.pdf` | 7 | 5 | 6 |
+| `10_Prolog.pdf` | 7 | 4 | 4 |
+| `3_RcercaNonInformata.pdf` | 10 | 1 | 2 |
+
+**Come leggerli:**
+
+- **Quasi tutto il guadagno viene dal PDF in inglese** (da 0/6 a 5/6).
+  `all-MiniLM-L6-v2` è addestrato in inglese e non collega una domanda italiana a una
+  slide inglese; il modello multilingua sì.
+- **La ricerca non informata resta a 2/10 con entrambi i modelli**, quindi non è un
+  problema di lingua. Le slide di quel PDF usano tutte lo stesso lessico ("ricerca",
+  "nodo", "costo", "frontiera") e vince spesso la slide sbagliata dello stesso PDF. Il
+  caso best-first peggiora: da rango 8 a fuori dai primi 10.
+- **Il nuovo modello tronca l'input a 128 token**, contro i 256 del vecchio: 57 chunk
+  su 204 vengono embeddati solo in parte, e la fine della slide viene ignorata. Una
+  parte delle regressioni (Prolog: regola ricorsiva, unificazione, backtracking)
+  potrebbe venire da qui. Prossimo esperimento: chunk più piccoli.
+
 ---
 
 ## Scelte di progetto
@@ -92,8 +143,10 @@ Per la CLI invece della UI web: `uv run python -m src.agents`
 e molto densi. Chunk più grandi diluivano il segnale nell'embedding; più piccoli
 spezzavano le definizioni a metà.
 
-**`all-MiniLM-L6-v2` per gli embedding.** Gira in locale, è gratis, 384 dimensioni.
-Il punto importante: il modello di embedding e quello generativo sono scelte
+**`paraphrase-multilingual-MiniLM-L12-v2` per gli embedding.** Gira in locale, è
+gratis, 384 dimensioni, e a differenza di `all-MiniLM-L6-v2` (il modello iniziale)
+gestisce l'italiano e le domande italiane su materiale inglese: hit@3 da 0.33 a 0.57
+sull'eval set (vedi [Qualità del retrieval](#qualità-del-retrieval)). Il punto importante: il modello di embedding e quello generativo sono scelte
 *indipendenti*. Cambiare il generativo costa una riga; cambiare l'embedding impone di
 re-indicizzare tutto il corpus e invalida ogni misura di qualità fatta prima.
 
@@ -117,12 +170,11 @@ comunque non troverà nulla nel materiale.
 
 Cose che non funzionano o che funzionano a metà. In ordine di gravità.
 
-1. **Il retrieval non è misurato.** Non esiste un eval set, quindi la qualità della
-   ricerca è valutata a occhio. C'è già un caso documentato di miss: alla query su
-   "best-first" l'agente ha risposto che il materiale non lo descriveva, mentre il
-   contenuto c'è (`3_RcercaNonInformata.pdf`, dove la ricerca in ampiezza è presentata
-   come best-first con `f(n)` = profondità). La risposta sembrava ragionevole, ed è
-   esattamente il motivo per cui serve una misura.
+1. **Il retrieval sbaglia in 4 domande su 10.** Hit@3 = 0.57 sull'eval set (vedi
+   [Qualità del retrieval](#qualità-del-retrieval)): in quasi metà dei casi l'agente
+   non riceve la slide giusta e risponde con quello che ha. Il caso peggiore è
+   `3_RcercaNonInformata.pdf` (2/10), incluso il caso noto: alla query su "best-first"
+   l'agente risponde che il materiale non lo descrive, mentre il contenuto c'è (p.9-10).
 
 2. **Lo stato conversazionale è in RAM.** `MemorySaver` non persiste: riavvii il
    processo e la cronologia sparisce. Il nome sessione nella UI sopravvive ai refresh
@@ -138,14 +190,7 @@ Cose che non funzionano o che funzionano a metà. In ordine di gravità.
 5. **Il routing si basa su un match di sottostringa.** Se il prompt cambia e il modello
    inizia a rispondere `OFF_TOPIC`, il router smette di rifiutare *in silenzio*.
 
-6. **Configurazione duplicata.** `QDRANT_URL`, `COLLECTION_NAME` e `EMBEDDING_MODEL`
-   sono ripetuti in `ingestion.py` e `retrieval.py`. Cambiarne uno solo rompe il
-   retrieval senza errori.
-
-7. **Path relativi alla working directory.** `data/` e `notes/` funzionano solo
-   lanciando dalla radice del progetto.
-
-8. **Single tenant.** Un retriever globale, nessuna nozione di utente.
+6. **Single tenant.** Un retriever globale, nessuna nozione di utente.
 
 ---
 
@@ -159,9 +204,9 @@ fase esiste per capire una tecnologia, non perché il carico la richieda.
 - [x] `pyproject.toml` + `uv.lock`
 - [x] `docker-compose.yml` per Qdrant
 - [x] README
-- [ ] Eval set: 25-30 domande con pagina attesa, metriche hit-rate@k e MRR@k
+- [x] Eval set: 30 domande con pagina attesa, metriche hit-rate@k e MRR@k
 - [ ] Test (routing, chunking, contratto dei tool) con `llm.invoke` mockato
-- [ ] `config.py` centralizzato
+- [x] `config.py` centralizzato
 
 L'eval set viene prima di tutto il resto perché è lo strumento con cui si misurano le
 scelte successive. Senza, il confronto fra due modelli è un'opinione.
@@ -261,7 +306,7 @@ fase 3. Log append-only, più consumer, replay: è il caso d'uso per cui Kafka e
 - Credenziali via IRSA, non chiavi statiche
 - **L'esperimento:** stesso eval set sui due modelli, confronto su qualità, latenza e
   costo per domanda. È il contenuto più interessante che uscirà da questo repo
-- Il modello di embedding resta MiniLM: cambiarlo imporrebbe di re-indicizzare tutto
+- Il modello di embedding resta quello locale: cambiarlo imporrebbe di re-indicizzare tutto
 
 ### Fase 8 — Kubernetes
 

@@ -9,7 +9,7 @@ QDRANT_URL = "http://localhost:6333"
 COLLECTION_NAME = "study_agent"
 
 # Modelli
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 LLM_MODEL = "qwen2.5:7b"
 
 # Chunking e retrieval
