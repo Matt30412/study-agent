@@ -306,14 +306,7 @@ fase 3. Log append-only, più consumer, replay: è il caso d'uso per cui Kafka e
 - Credenziali via IRSA, non chiavi statiche
 - **L'esperimento:** stesso eval set sui due modelli, confronto su qualità, latenza e
   costo per domanda. È il contenuto più interessante che uscirà da questo repo
-- Il modello di embedding resta quello locale: cambiarlo imporrebbe di re-indicizzare tutto
+- Il modello di embedding resta MiniLM: cambiarlo imporrebbe di re-indicizzare tutto
 
-### Fase 8 — Kubernetes
 
-- API stateless con HPA — possibile *solo* grazie al checkpointer esternalizzato
-- Qdrant come StatefulSet con PVC; Redis e Postgres gestiti, non nel cluster
-- Secret via External Secrets Operator
 
-Su **k3d in locale**. EKS non viene acceso: il control plane costa ~73 $/mese e non
-insegna nulla che k3d non insegni. L'obiettivo è capire il modello di deployment, non
-pagare per averlo online.
