@@ -1,0 +1,163 @@
+[
+  {
+    "question": "cos'è la ricerca best-first?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["9", "10"],
+    "note": "caso noto: oggi il retrieval manca il chunk giusto"
+  },
+  {
+    "question": "che differenza c'è tra lo spazio degli stati e l'albero di ricerca?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["7"]
+  },
+  {
+    "question": "con quali criteri si giudica se un algoritmo di ricerca è buono?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["12"]
+  },
+  {
+    "question": "se tutte le azioni costano uguale, la visita in larghezza trova la soluzione migliore?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["14"],
+    "note": "sinonimo: il corso dice 'ampiezza', non 'larghezza'"
+  },
+  {
+    "question": "come si comporta Dijkstra quando i passi hanno costi diversi?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["16"],
+    "note": "le slide 17-22 sono solo esempi grafici con lo stesso titolo"
+  },
+  {
+    "question": "la DFS può finire in un loop infinito?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["23"],
+    "note": "acronimo inglese che il corso non usa"
+  },
+  {
+    "question": "come scelgo il limite di profondità se non so quanto è profonda la soluzione?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["26"]
+  },
+  {
+    "question": "cosa succede se due percorsi diversi portano allo stesso stato?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["11"]
+  },
+  {
+    "question": "quali elementi servono per definire formalmente un problema di ricerca?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["4"]
+  },
+  {
+    "question": "si può cercare partendo contemporaneamente dall'inizio e dalla fine?",
+    "expected_file": "3_RcercaNonInformata.pdf",
+    "expected_pages": ["28"]
+  },
+  {
+    "question": "che differenza c'è tra funzione agente e programma agente?",
+    "expected_file": "2_Agenti_Intelligenti.pdf",
+    "expected_pages": ["2", "9"]
+  },
+  {
+    "question": "un agente razionale deve conoscere in anticipo l'esito delle sue azioni?",
+    "expected_file": "2_Agenti_Intelligenti.pdf",
+    "expected_pages": ["5"]
+  },
+  {
+    "question": "cosa vuol dire PEAS?",
+    "expected_file": "2_Agenti_Intelligenti.pdf",
+    "expected_pages": ["6"]
+  },
+  {
+    "question": "quando un ambiente si dice episodico?",
+    "expected_file": "2_Agenti_Intelligenti.pdf",
+    "expected_pages": ["7"]
+  },
+  {
+    "question": "come fa un agente a gestire le parti del mondo che non riesce a vedere?",
+    "expected_file": "2_Agenti_Intelligenti.pdf",
+    "expected_pages": ["11"]
+  },
+  {
+    "question": "da quali componenti è fatto un agente che impara dall'esperienza?",
+    "expected_file": "2_Agenti_Intelligenti.pdf",
+    "expected_pages": ["14"]
+  },
+  {
+    "question": "cosa distingue un agente basato sull'utilità da uno basato su obiettivi?",
+    "expected_file": "2_Agenti_Intelligenti.pdf",
+    "expected_pages": ["12", "13"]
+  },
+  {
+    "question": "come si scrive in Prolog una regola ricorsiva, per esempio per gli antenati?",
+    "expected_file": "10_Prolog.pdf",
+    "expected_pages": ["23", "24"]
+  },
+  {
+    "question": "cosa significa il warning sulle variabili singleton?",
+    "expected_file": "10_Prolog.pdf",
+    "expected_pages": ["25"]
+  },
+  {
+    "question": "quando due termini in Prolog unificano?",
+    "expected_file": "10_Prolog.pdf",
+    "expected_pages": ["14"]
+  },
+  {
+    "question": "come fa il Prolog a tornare indietro quando un ramo non porta a una soluzione?",
+    "expected_file": "10_Prolog.pdf",
+    "expected_pages": ["29", "34"]
+  },
+  {
+    "question": "come si risolvono le torri di Hanoi in Prolog?",
+    "expected_file": "10_Prolog.pdf",
+    "expected_pages": ["63", "67", "68"],
+    "note": "sulle slide c'è stampato 77/81/82: da p.60 numero stampato e page_label divergono"
+  },
+  {
+    "question": "perché con la regola fratello ogni persona risulta fratello di se stessa?",
+    "expected_file": "10_Prolog.pdf",
+    "expected_pages": ["21"]
+  },
+  {
+    "question": "come si calcola la lunghezza di una lista in Prolog?",
+    "expected_file": "10_Prolog.pdf",
+    "expected_pages": ["48", "49"]
+  },
+  {
+    "question": "che differenza c'è tra apprendimento supervisionato e non supervisionato?",
+    "expected_file": "12_ML.pdf",
+    "expected_pages": ["47", "48", "50"],
+    "note": "domanda in italiano, slide in inglese"
+  },
+  {
+    "question": "perché aggiungere tante feature può peggiorare il modello?",
+    "expected_file": "12_ML.pdf",
+    "expected_pages": ["33"],
+    "note": "domanda in italiano, slide in inglese (curse of dimensionality)"
+  },
+  {
+    "question": "come si gestiscono i valori mancanti nei dati?",
+    "expected_file": "12_ML.pdf",
+    "expected_pages": ["24"],
+    "note": "domanda in italiano, slide in inglese"
+  },
+  {
+    "question": "cos'è una variabile ordinale?",
+    "expected_file": "12_ML.pdf",
+    "expected_pages": ["19", "22", "23"],
+    "note": "domanda in italiano, slide in inglese"
+  },
+  {
+    "question": "come si trasforma un albero di decisione in un insieme di regole?",
+    "expected_file": "12_ML.pdf",
+    "expected_pages": ["39"],
+    "note": "domanda in italiano, slide in inglese"
+  },
+  {
+    "question": "in quali situazioni conviene usare il machine learning?",
+    "expected_file": "12_ML.pdf",
+    "expected_pages": ["46"],
+    "note": "domanda in italiano, slide in inglese"
+  }
+]

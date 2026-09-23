@@ -6,9 +6,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from src.retrieval import get_retriever
-
-DATA_DIR = Path("data")
-NOTES_DIR = Path("notes")
+from src.config import DATA_DIR, NOTES_DIR
 
 _retriever = get_retriever()
 
@@ -23,7 +21,7 @@ def search_course_material(query: str) -> str:
     if not docs:
         return "Nessun risultato trovato."
     return "\n\n".join(
-        f"[{d.metadata.get('source_file')} p.{d.metadata.get('page')}]\n{d.page_content}"
+        f"[{d.metadata.get('source_file')} p.{d.metadata.get('page_label')}]\n{d.page_content}"
         for d in docs
     )
 

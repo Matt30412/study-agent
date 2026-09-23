@@ -4,6 +4,7 @@ import gradio as gr
 from langchain_core.messages import HumanMessage
 
 from src.agents import build_agent
+from src.config import RECURSION_LIMIT
 
 agent = build_agent()
 
@@ -14,7 +15,7 @@ def respond(message: str, history, session_id: str) -> str:
     thread_id = (session_id or "").strip() or DEFAULT_SESSION
     config = {
         "configurable": {"thread_id": thread_id},
-        "recursion_limit": 15,
+        "recursion_limit": RECURSION_LIMIT,
     }
     result = agent.invoke({"messages": [HumanMessage(message)]}, config)
     return result["messages"][-1].content

@@ -2,13 +2,10 @@
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
-
-COLLECTION_NAME = "study_agent"
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-QDRANT_URL = "http://localhost:6333"
+from src.config import COLLECTION_NAME, EMBEDDING_MODEL, QDRANT_URL, RETRIEVER_K
 
 
-def get_retriever(k: int = 3):
+def get_retriever(k: int = RETRIEVER_K):
     store = QdrantVectorStore.from_existing_collection(
         embedding=HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL),
         url=QDRANT_URL,

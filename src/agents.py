@@ -8,10 +8,9 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
+from src.config import LLM_MODEL,RECURSION_LIMIT
 
 from src.tools import TOOLS
-
-LLM_MODEL = "qwen2.5:7b"
 
 SYSTEM_PROMPT = """Sei un assistente di studio per un corso universitario di Intelligenza Artificiale.
 Basa le risposte sul materiale del corso, usando i tool per cercarlo, e cita sempre file e pagina.
@@ -86,7 +85,7 @@ def build_agent():
 
 if __name__ == "__main__":
     app = build_agent()
-    config = {"configurable": {"thread_id": "sessione-1"}, "recursion_limit": 15}
+    config = {"configurable": {"thread_id": "sessione-1"}, "recursion_limit": RECURSION_LIMIT}
 
     print("Benvenuto! Fai una domanda sul corso di Intelligenza Artificiale (o 'exit' per uscire).")
     while True:

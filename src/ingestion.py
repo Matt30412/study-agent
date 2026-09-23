@@ -6,11 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
-
-DATA_DIR = Path("data")
-COLLECTION_NAME = "study_agent"
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-QDRANT_URL = "http://localhost:6333"
+from src.config import CHUNK_OVERLAP, DATA_DIR, COLLECTION_NAME, EMBEDDING_MODEL, QDRANT_URL,CHUNK_SIZE
 
 
 def main():
@@ -27,8 +23,8 @@ def main():
         print(f"  {path.name}: {len(pages)} pagine")
 
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=100,
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
         separators=["\n\n", "\n", ". ", " ", ""],
     )
     chunks = splitter.split_documents(docs)
