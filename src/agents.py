@@ -41,23 +41,28 @@ class AgentState(TypedDict):
     route: str
 
 
+def classify_question(llm, messages: list[BaseMessage]) -> str:
+    # Passiamo una finestra di contesto, non solo l'ultimo messaggio: senza,
+    # un follow-up come "approfondisci" verrebbe classificato fuori tema.
+    recent = messages[-ROUTER_CONTEXT_WINDOW:]
+    transcript = "\n".join(
+        f"{'Utente' if isinstance(m, HumanMessage) else 'Assistente'}: {m.content}"
+        for m in recent
+        if m.content
+    )
+    verdict = llm.invoke(
+        [SystemMessage(ROUTER_PROMPT), HumanMessage(transcript)]
+    ).content.upper()
+    # Fail-open: si rifiuta solo su match esplicito, qualsiasi altro output va all'agente.
+    return "refuse" if "FUORI_TEMA" in verdict else "agent"
+
+
 def build_agent():
     llm = ChatOllama(model=LLM_MODEL, temperature=0)
     llm_with_tools = llm.bind_tools(TOOLS)
 
     def router(state: AgentState):
-        # Passiamo una finestra di contesto, non solo l'ultimo messaggio: senza,
-        # un follow-up come "approfondisci" verrebbe classificato fuori tema.
-        recent = state["messages"][-ROUTER_CONTEXT_WINDOW:]
-        transcript = "\n".join(
-            f"{'Utente' if isinstance(m, HumanMessage) else 'Assistente'}: {m.content}"
-            for m in recent
-            if m.content
-        )
-        verdict = llm.invoke(
-            [SystemMessage(ROUTER_PROMPT), HumanMessage(transcript)]
-        ).content.upper()
-        return {"route": "refuse" if "FUORI_TEMA" in verdict else "agent"}
+        return {"route": classify_question(llm, state["messages"])}
 
     def agent(state: AgentState):
         messages = [SystemMessage(SYSTEM_PROMPT)] + state["messages"]

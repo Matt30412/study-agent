@@ -1,14 +1,17 @@
 """Tool a disposizione dell'agente."""
 
 from datetime import datetime
-from pathlib import Path
+from functools import lru_cache
 
 from langchain_core.tools import tool
 
 from src.retrieval import get_retriever
 from src.config import DATA_DIR, NOTES_DIR
 
-_retriever = get_retriever()
+
+@lru_cache(maxsize=1)
+def _retriever():
+    return get_retriever()
 
 
 @tool
@@ -17,7 +20,7 @@ def search_course_material(query: str) -> str:
     Usalo per qualsiasi domanda sui contenuti del corso. Puoi chiamarlo piu' volte
     con query diverse se ti servono informazioni su argomenti distinti.
     Restituisce estratti con file di origine e numero di pagina."""
-    docs = _retriever.invoke(query)
+    docs = _retriever().invoke(query)
     if not docs:
         return "Nessun risultato trovato."
     return "\n\n".join(
