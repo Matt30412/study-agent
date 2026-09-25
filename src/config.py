@@ -21,6 +21,9 @@ RETRIEVER_K = 3
 
 RECURSION_LIMIT = 15
 
+# Utenti dell'app in Fase 1, formato "nome:password,nome:password". Sparisce con Google OIDC.
+APP_USERS = os.getenv("APP_USERS", "")
+
 #Google Oauth
 ID_CLIENT = os.getenv("id_client")
 CLIENT_SECRET = os.getenv("client_secret")

@@ -2,19 +2,26 @@
 
 import gradio as gr
 from langchain_core.messages import HumanMessage
+from langchain_ollama import ChatOllama
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.agents import build_agent
-from src.config import RECURSION_LIMIT
+from src.config import APP_USERS, LLM_MODEL, RECURSION_LIMIT
+from src.tenancy import current_owner, load_users
 
-agent = build_agent()
+LLM = ChatOllama(model=LLM_MODEL, temperature=0)
+CHECKPOINTER = MemorySaver()
 
 DEFAULT_SESSION = "sessione-1"
 
 
-def respond(message: str, history, session_id: str) -> str:
-    thread_id = (session_id or "").strip() or DEFAULT_SESSION
+def respond(message: str, history, session_id: str, request: gr.Request) -> str:
+    owner = current_owner(request)
+    session = (session_id or "").strip() or DEFAULT_SESSION
+    agent = build_agent(owner, LLM, CHECKPOINTER)
     config = {
-        "configurable": {"thread_id": thread_id},
+        # L'owner nel thread_id separa le conversazioni: "sessione-1" di Alice non è quella di Bob.
+        "configurable": {"thread_id": f"{owner}:{session}"},
         "recursion_limit": RECURSION_LIMIT,
     }
     result = agent.invoke({"messages": [HumanMessage(message)]}, config)
@@ -41,4 +48,4 @@ demo = gr.ChatInterface(
 )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(auth=load_users(APP_USERS))

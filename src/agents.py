@@ -1,5 +1,6 @@
 """Agente ReAct in LangGraph: router -> agent <-> tools, con rifiuto fuori tema."""
 
+import argparse
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -10,7 +11,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 from src.config import LLM_MODEL,RECURSION_LIMIT
 
-from src.tools import TOOLS
+from src.tools import build_tools
 
 SYSTEM_PROMPT = """Sei un assistente di studio per un corso universitario di Intelligenza Artificiale.
 Basa le risposte sul materiale del corso, usando i tool per cercarlo, e cita sempre file e pagina.
@@ -57,9 +58,11 @@ def classify_question(llm, messages: list[BaseMessage]) -> str:
     return "refuse" if "FUORI_TEMA" in verdict else "agent"
 
 
-def build_agent():
-    llm = ChatOllama(model=LLM_MODEL, temperature=0)
-    llm_with_tools = llm.bind_tools(TOOLS)
+def build_agent(owner_id: str, llm, checkpointer):
+    # llm e checkpointer arrivano da fuori perché vanno condivisi fra richieste:
+    # un MemorySaver nuovo a ogni chiamata perderebbe la conversazione.
+    tools = build_tools(owner_id)
+    llm_with_tools = llm.bind_tools(tools)
 
     def router(state: AgentState):
         return {"route": classify_question(llm, state["messages"])}
@@ -74,7 +77,7 @@ def build_agent():
     graph = StateGraph(AgentState)
     graph.add_node("router", router)
     graph.add_node("agent", agent)
-    graph.add_node("tools", ToolNode(TOOLS))
+    graph.add_node("tools", ToolNode(tools))
     graph.add_node("refuse", refuse)
 
     graph.add_edge(START, "router")
@@ -85,12 +88,16 @@ def build_agent():
     graph.add_edge("tools", "agent")
     graph.add_edge("refuse", END)
 
-    return graph.compile(checkpointer=MemorySaver())
+    return graph.compile(checkpointer=checkpointer)
 
 
 if __name__ == "__main__":
-    app = build_agent()
-    config = {"configurable": {"thread_id": "sessione-1"}, "recursion_limit": RECURSION_LIMIT}
+    parser = argparse.ArgumentParser(description="Chat da terminale con lo study agent.")
+    parser.add_argument("--owner", required=True)
+    owner = parser.parse_args().owner
+
+    app = build_agent(owner, ChatOllama(model=LLM_MODEL, temperature=0), MemorySaver())
+    config = {"configurable": {"thread_id": f"{owner}:sessione-1"}, "recursion_limit": RECURSION_LIMIT}
 
     print("Benvenuto! Fai una domanda sul corso di Intelligenza Artificiale (o 'exit' per uscire).")
     while True:

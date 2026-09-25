@@ -29,3 +29,20 @@ def owner_filter(owner_id: str) -> models.Filter:
 def get_retriever(owner_id:str ,k: int = RETRIEVER_K):
     
     return _get_store().as_retriever(search_kwargs={"k": k, "filter": owner_filter(owner_id)})
+
+
+def list_source_files(owner_id: str) -> list[str]:
+    client = _get_store().client
+    files, offset = set(), None
+    while True:
+        points, offset = client.scroll(
+            COLLECTION_NAME,
+            scroll_filter=owner_filter(owner_id),
+            with_payload=["metadata.source_file"],
+            with_vectors=False,
+            limit=256,
+            offset=offset,
+        )
+        files.update(p.payload["metadata"]["source_file"] for p in points)
+        if offset is None:
+            return sorted(files)
