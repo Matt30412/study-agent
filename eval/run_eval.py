@@ -1,4 +1,5 @@
 import json
+import argparse
 from pathlib import Path
 from src.retrieval import get_retriever
 
@@ -11,9 +12,9 @@ def first_hit_rank(docs,expected_file, expected_pages):
             return rank
     return None
 
-def main():
+def main(owner_id:str):
     dataset = json.loads((Path(__file__).parent / "dataset.json").read_text(encoding= "utf-8"))
-    retriever = get_retriever(k = max(KS))  #recupero 10 una volta sola
+    retriever = get_retriever(owner_id,k = max(KS))  #recupero 10 una volta sola
 
     ranks = []
     for item in dataset:
@@ -37,4 +38,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--owner",required=True)
+    main(parser.parse_args().owner)
