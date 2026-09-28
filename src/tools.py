@@ -42,6 +42,7 @@ def build_tools(owner_id: str) -> list:
         safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in title)[:60]
         path = notes_dir / f"{datetime.now():%Y%m%d_%H%M}_{safe}.md"
         path.write_text(f"# {title}\n\n{content}\n", encoding="utf-8")
-        return f"Appunto salvato in {path}"
+        # Solo il nome: il percorso assoluto finirebbe in chat, rivelando com'è fatto il server.
+        return f"Appunto salvato: {path.name}"
 
     return [search_course_material, list_course_documents, save_study_note]

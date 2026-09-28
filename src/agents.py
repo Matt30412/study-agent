@@ -5,12 +5,12 @@ from typing import Annotated, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.checkpoint.memory import MemorySaver
-from src.config import LLM_MODEL,RECURSION_LIMIT
 
+from src.config import LLM_MODEL, RECURSION_LIMIT
 from src.tools import build_tools
 
 SYSTEM_PROMPT = """Sei un assistente di studio per un corso universitario di Intelligenza Artificiale.
@@ -51,9 +51,7 @@ def classify_question(llm, messages: list[BaseMessage]) -> str:
         for m in recent
         if m.content
     )
-    verdict = llm.invoke(
-        [SystemMessage(ROUTER_PROMPT), HumanMessage(transcript)]
-    ).content.upper()
+    verdict = llm.invoke([SystemMessage(ROUTER_PROMPT), HumanMessage(transcript)]).content.upper()
     # Fail-open: si rifiuta solo su match esplicito, qualsiasi altro output va all'agente.
     return "refuse" if "FUORI_TEMA" in verdict else "agent"
 
@@ -97,7 +95,10 @@ if __name__ == "__main__":
     owner = parser.parse_args().owner
 
     app = build_agent(owner, ChatOllama(model=LLM_MODEL, temperature=0), MemorySaver())
-    config = {"configurable": {"thread_id": f"{owner}:sessione-1"}, "recursion_limit": RECURSION_LIMIT}
+    config = {
+        "configurable": {"thread_id": f"{owner}:sessione-1"},
+        "recursion_limit": RECURSION_LIMIT,
+    }
 
     print("Benvenuto! Fai una domanda sul corso di Intelligenza Artificiale (o 'exit' per uscire).")
     while True:

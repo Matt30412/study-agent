@@ -28,11 +28,13 @@ def store(monkeypatch):
         collection_name=COLLECTION_NAME,
         embedding=DeterministicFakeEmbedding(size=DIM),
     )
-    store.add_documents([
-        _chunk("alice", "alice.pdf", "ricerca in ampiezza"),
-        _chunk("alice", "comune.pdf", "ricerca in profondita'"),
-        _chunk("bob", "comune.pdf", "unificazione in Prolog"),
-    ])
+    store.add_documents(
+        [
+            _chunk("alice", "alice.pdf", "ricerca in ampiezza"),
+            _chunk("alice", "comune.pdf", "ricerca in profondita'"),
+            _chunk("bob", "comune.pdf", "unificazione in Prolog"),
+        ]
+    )
     monkeypatch.setattr(retrieval, "_get_store", lambda: store)
     return store
 
