@@ -13,5 +13,21 @@ services:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
+  # Identita' utente (src/users.py). In Fase 4 ospitera' anche il checkpointer di LangGraph.
+  postgres:
+    image: postgres:18
+    container_name: study-agent-postgres
+    environment:
+      # Credenziali solo per lo sviluppo locale, le stesse del default di DATABASE_URL.
+      POSTGRES_USER: study_agent
+      POSTGRES_PASSWORD: study_agent
+      POSTGRES_DB: study_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    restart: unless-stopped
+
 volumes:
   qdrant_storage:
+  postgres_data:

@@ -1,109 +1,158 @@
 # Study Agent
 
-Agente RAG che risponde a domande sul materiale di un corso universitario di
-Intelligenza Artificiale, citando file e pagina di origine. Costruito con LangGraph,
-Qdrant e un LLM locale via Ollama.
+A RAG agent that answers questions about the material of a university course on Artificial
+Intelligence, citing the source file and page. Built with LangGraph, Qdrant and a local LLM
+served by Ollama, behind a FastAPI server with Google login.
 
-Non è un "chat with your PDF": l'agente decide autonomamente quali tool usare, può
-concatenare più ricerche, salva appunti su disco, e rifiuta le domande fuori dal
-dominio del corso prima di sprecare una generazione.
+It is not a "chat with your PDF": the agent decides on its own which tools to use, can chain
+several searches, saves study notes to disk, and turns down off-topic questions before wasting a
+generation on them. Every user only ever sees their own documents.
+
+> The course, the prompts and the UI are in Italian, and so is the eval set. That turned out to
+> matter, because part of the material is in English (see [Retrieval quality](#retrieval-quality)).
 
 ---
 
-## Architettura
+## Architecture
 
 ```mermaid
 graph TD
     S([START]) --> router
     router -.->|PERTINENTE| agent
     router -.->|FUORI_TEMA| refuse
-    agent -.->|emette tool call| tools
-    agent -.->|risposta finale| E([END])
+    agent -.->|emits tool call| tools
+    agent -.->|final answer| E([END])
     tools --> agent
     refuse --> E
 ```
 
-| Nodo | Ruolo |
+| Node | Role |
 |---|---|
-| `router` | Classifica la domanda come pertinente o fuori tema. Taglia corto prima dell'agente. |
-| `agent` | LLM con i tool bindati. Decide se cercare o rispondere. |
-| `tools` | Esegue il tool scelto (`ToolNode`), poi torna all'agente. |
-| `refuse` | Risposta di rifiuto canonica, senza chiamare l'LLM. |
+| `router` | Classifies the question as relevant or off-topic. Cuts it short before the agent. |
+| `agent` | LLM with the tools bound. Decides whether to search or to answer. |
+| `tools` | Runs the chosen tool (`ToolNode`), then goes back to the agent. |
+| `refuse` | Canned refusal, without calling the LLM. |
 
-Il ciclo `agent ⇄ tools` è il pattern ReAct: l'agente può fare più ricerche
-successive prima di rispondere.
+The `agent ⇄ tools` loop is the ReAct pattern: the agent can run several searches in a row
+before answering.
 
-### Moduli
+In front of the graph, `src/server.py` (FastAPI) handles the Google login and mounts the Gradio
+chat on `/chat`. Without a session, Gradio answers 401. The logged-in user's `owner_id` reaches
+the tools through the server-side session, never through the model (see Phases 1 and 2 in the
+[roadmap](#roadmap)).
 
-| File | Responsabilità |
+### Modules
+
+| File | Responsibility |
 |---|---|
-| `src/config.py` | Tutte le costanti di configurazione, in un solo posto. |
-| `src/ingestion.py` | PDF → chunk → embedding → Qdrant. Si lancia una volta. |
-| `src/retrieval.py` | Connessione alla collection esistente, costruisce il retriever. |
-| `src/tools.py` | I tre tool a disposizione dell'agente. |
-| `src/agents.py` | Il grafo LangGraph. Anche CLI standalone. |
-| `src/app.py` | Interfaccia web Gradio. |
-| `eval/run_eval.py` | Misura il retrieval sull'eval set (`eval/dataset.json`). |
+| `src/config.py` | All configuration in one place. Service URLs and secrets come from the environment. |
+| `src/ingestion.py` | PDF → chunks → embeddings → Qdrant, for one owner. Run once per set of PDFs. |
+| `src/retrieval.py` | Connects to the existing collection and builds a retriever filtered by owner. |
+| `src/tools.py` | The three tools available to the agent, built per request for one owner. |
+| `src/agents.py` | The LangGraph graph. Also a standalone CLI. |
+| `src/tenancy.py` | `owner_id` validation, and resolution of the current user from the request. |
+| `src/app.py` | Gradio chat UI. Run on its own, it's the dev mode with local users. |
+| `src/server.py` | FastAPI: Google OIDC login, session cookie, Gradio mounted on `/chat`. |
+| `src/users.py` | Maps external identities `(iss, sub)` to internal `owner_id`s on PostgreSQL. Also a CLI to link accounts. |
+| `eval/run_eval.py` | Measures retrieval on the eval set (`eval/dataset.json`). |
+| `tests/` | pytest suite. Needs neither Qdrant nor Ollama; the identity tests use PostgreSQL. |
 
-### Tool disponibili
+### Available tools
 
-- **`search_course_material(query)`** — ricerca semantica nel materiale, restituisce
-  estratti con file e numero di pagina.
-- **`list_course_documents()`** — elenca i PDF disponibili.
-- **`save_study_note(title, content)`** — scrive un appunto markdown in `notes/`.
-  È l'unico tool con effetti collaterali.
+- **`search_course_material(query)`**: semantic search over the owner's material. Returns
+  excerpts with file and page number.
+- **`list_course_documents()`**: lists the owner's PDFs.
+- **`save_study_note(title, content)`**: writes a markdown note to `notes/<owner_id>/`. It's the
+  only tool with side effects.
 
 ---
 
-## Requisiti
+## Requirements
 
 - Python ≥ 3.11
-- [Docker](https://docs.docker.com/get-docker/) (per Qdrant)
-- [Ollama](https://ollama.com/) con il modello `qwen2.5:7b`
-- [uv](https://docs.astral.sh/uv/) (consigliato) oppure pip
+- [Docker](https://docs.docker.com/get-docker/) (for Qdrant and PostgreSQL)
+- [Ollama](https://ollama.com/) with the `qwen2.5:7b` model
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- For the Google login only: an OAuth client from
+  [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 
-## Avvio
+## Getting started
 
 ```bash
-# 1. Dipendenze
+# 1. Dependencies
 uv sync
 
-# 2. Qdrant
+# 2. Configuration: copy the template and fill it in (every variable is explained in it)
+cp .env.example .env
+
+# 3. Qdrant and PostgreSQL
 docker compose up -d
 
-# 3. Modello LLM
+# 4. LLM
 ollama pull qwen2.5:7b
 
-# 4. Materiale: metti i tuoi PDF in data/
-#    (i PDF sono gitignorati: sono materiale del corso, non redistribuibile)
+# 5. Material: put your PDFs in data/
+#    (PDFs are gitignored: they're course material and can't be redistributed)
 
-# 5. Indicizzazione — una volta sola, o a ogni cambio dei PDF
-uv run python -m src.ingestion
-
-# 6. Interfaccia web
-uv run python -m src.app
+# 6. Indexing, once per owner and whenever the PDFs change
+uv run python -m src.ingestion --owner alice
 ```
 
-Per la CLI invece della UI web: `uv run python -m src.agents`
+Then pick one of the two ways to run the web app.
 
-Per misurare il retrieval (serve solo Qdrant, non Ollama): `uv run python -m eval.run_eval`
+**Dev mode: local users, no Google.** Users come from `APP_USERS` (`alice:change-me`). The
+username *is* the `owner_id`, so it has to match the `--owner` used for indexing.
+
+```bash
+uv run python -m src.app                             # http://localhost:7860
+```
+
+**Google login: the real setup.** In Google Cloud Console, create an OAuth client of type *Web
+application* with `http://localhost:8000/auth/callback` as an authorized redirect URI, then fill
+in `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET` and `ALLOWED_EMAILS` in `.env`.
+
+```bash
+uv run python -m uvicorn src.server:app --port 8000  # http://localhost:8000
+```
+
+Open it as `localhost`, not `127.0.0.1`: Google requires the redirect URI to match exactly.
+
+The first login creates a new, empty `owner_id` for your Google account (`u_` followed by random
+hex). To see the documents already indexed under an owner, link your account to it, then log out
+(`/logout`) and back in:
+
+```bash
+uv run python -m src.users link --email you@gmail.com --owner alice
+```
+
+Other entry points:
+
+```bash
+uv run python -m src.agents --owner alice      # terminal chat
+uv run python -m eval.run_eval --owner alice   # retrieval eval: needs Qdrant, not Ollama
+uv run pytest                                  # tests: need neither Qdrant nor Ollama
+uv run ruff check . && uv run ruff format --check .
+```
+
+The identity tests run against PostgreSQL, on a separate `study_agent_test` database created on
+the fly. If PostgreSQL isn't running, they're skipped with a message saying so.
 
 ---
 
-## Qualità del retrieval
+## Retrieval quality
 
-Misurata su `eval/dataset.json`: 30 domande sui 4 PDF del corso, ognuna con file e
-pagine attese verificate sul PDF. Le domande sono scritte come le porrebbe uno
-studente, non ricopiando i titoli delle slide, e alcune sono difficili apposta:
-sinonimi che il corso non usa ("visita in larghezza", "DFS"), acronimi, e domande in
-italiano su `12_ML.pdf`, che è in inglese.
+Measured on `eval/dataset.json`: 30 questions over the 4 course PDFs, each with the expected
+file and pages checked against the PDF. The questions are written the way a student would ask
+them, not copied from the slide titles, and some are hard on purpose: synonyms the course doesn't
+use ("visita in larghezza", "DFS"), acronyms, and Italian questions about `12_ML.pdf`, which is
+in English.
 
-L'eval chiama direttamente il retriever, senza LLM: è deterministico, gira in pochi
-secondi e non cambia se cambia il modello generativo.
+The eval calls the retriever directly, with no LLM: it's deterministic, runs in a few seconds,
+and doesn't move when the generative model changes.
 
-- **hit-rate@k**: frazione di domande con almeno un chunk giusto nei primi k.
-- **MRR@k**: media di `1/rango` del primo chunk giusto (0 se assente). Premia il chunk
-  giusto *in cima*.
+- **hit-rate@k**: fraction of questions with at least one correct chunk in the top k.
+- **MRR@k**: mean of `1/rank` of the first correct chunk (0 if missing). Rewards the right
+  chunk being *at the top*.
 
 | k | `all-MiniLM-L6-v2` hit-rate | MRR | `paraphrase-multilingual-MiniLM-L12-v2` hit-rate | MRR |
 |---:|---:|---:|---:|---:|
@@ -112,201 +161,244 @@ secondi e non cambia se cambia il modello generativo.
 | 5 | 0.43 | 0.29 | **0.70** | **0.49** |
 | 10 | 0.60 | 0.31 | **0.73** | **0.49** |
 
-In produzione `RETRIEVER_K = 3`, quindi la riga che conta è k=3. Hit@3 per PDF:
+In production `RETRIEVER_K = 3`, so k=3 is the row that matters. Hit@3 per PDF:
 
-| PDF | Domande | MiniLM-L6 | multilingual |
+| PDF | Questions | MiniLM-L6 | multilingual |
 |---|---:|---:|---:|
-| `12_ML.pdf` (inglese) | 6 | 0 | 5 |
+| `12_ML.pdf` (English) | 6 | 0 | 5 |
 | `2_Agenti_Intelligenti.pdf` | 7 | 5 | 6 |
 | `10_Prolog.pdf` | 7 | 4 | 4 |
 | `3_RcercaNonInformata.pdf` | 10 | 1 | 2 |
 
-**Come leggerli:**
+**How to read them:**
 
-- **Quasi tutto il guadagno viene dal PDF in inglese** (da 0/6 a 5/6).
-  `all-MiniLM-L6-v2` è addestrato in inglese e non collega una domanda italiana a una
-  slide inglese; il modello multilingua sì.
-- **La ricerca non informata resta a 2/10 con entrambi i modelli**, quindi non è un
-  problema di lingua. Le slide di quel PDF usano tutte lo stesso lessico ("ricerca",
-  "nodo", "costo", "frontiera") e vince spesso la slide sbagliata dello stesso PDF. Il
-  caso best-first peggiora: da rango 8 a fuori dai primi 10.
-- **Il nuovo modello tronca l'input a 128 token**, contro i 256 del vecchio: 57 chunk
-  su 204 vengono embeddati solo in parte, e la fine della slide viene ignorata. Una
-  parte delle regressioni (Prolog: regola ricorsiva, unificazione, backtracking)
-  potrebbe venire da qui. Prossimo esperimento: chunk più piccoli.
-
----
-
-## Scelte di progetto
-
-**Chunk da 800 caratteri, overlap 100.** Le slide universitarie hanno paragrafi corti
-e molto densi. Chunk più grandi diluivano il segnale nell'embedding; più piccoli
-spezzavano le definizioni a metà.
-
-**`paraphrase-multilingual-MiniLM-L12-v2` per gli embedding.** Gira in locale, è
-gratis, 384 dimensioni, e a differenza di `all-MiniLM-L6-v2` (il modello iniziale)
-gestisce l'italiano e le domande italiane su materiale inglese: hit@3 da 0.33 a 0.57
-sull'eval set (vedi [Qualità del retrieval](#qualità-del-retrieval)). Il punto importante: il modello di embedding e quello generativo sono scelte
-*indipendenti*. Cambiare il generativo costa una riga; cambiare l'embedding impone di
-re-indicizzare tutto il corpus e invalida ogni misura di qualità fatta prima.
-
-**Qdrant invece di FAISS.** Serve il filtraggio sul payload per il multi-tenancy
-(vedi roadmap): FAISS non ce l'ha, e la migrazione a valle sarebbe più costosa
-dell'averlo scelto subito.
-
-**Un nodo router invece di un system prompt più severo.** Il prompt è un suggerimento
-statistico, non un vincolo: un 7B lo ignora. Prima del router, alla domanda "qual è la
-ricetta della carbonara?" l'agente rispondeva con la ricetta, senza chiamare alcun
-tool. Ora quel percorso è chiuso strutturalmente dal grafo.
-
-**Il routing fallisce in apertura (fail-open).** Il rifiuto scatta solo su match
-esplicito di `FUORI_TEMA`; qualsiasi altro output instrada verso l'agente. Respingere
-una domanda legittima è più dannoso che lasciar passare una domanda fuori tema, che
-comunque non troverà nulla nel materiale.
+- **Almost all of the gain comes from the English PDF** (from 0/6 to 5/6). `all-MiniLM-L6-v2`
+  is trained on English and doesn't connect an Italian question to an English slide; the
+  multilingual model does.
+- **Uninformed search stays at 2/10 with both models**, so it isn't a language problem. The
+  slides of that PDF all share the same vocabulary ("ricerca", "nodo", "costo", "frontiera") and
+  the wrong slide of the same PDF often wins. The best-first case gets worse: from rank 8 to
+  outside the top 10.
+- **The new model truncates its input at 128 tokens**, against 256 for the old one: 57 chunks out
+  of 204 are only partly embedded, and the end of the slide is ignored. Some of the regressions
+  (Prolog: recursive rule, unification, backtracking) may come from this. Next experiment:
+  smaller chunks.
 
 ---
 
-## Limiti noti
+## Design choices
 
-Cose che non funzionano o che funzionano a metà. In ordine di gravità.
+**800-character chunks, 100 overlap.** University slides have short, very dense paragraphs.
+Bigger chunks diluted the signal in the embedding; smaller ones cut definitions in half.
 
-1. **Il retrieval sbaglia in 4 domande su 10.** Hit@3 = 0.57 sull'eval set (vedi
-   [Qualità del retrieval](#qualità-del-retrieval)): in quasi metà dei casi l'agente
-   non riceve la slide giusta e risponde con quello che ha. Il caso peggiore è
-   `3_RcercaNonInformata.pdf` (2/10), incluso il caso noto: alla query su "best-first"
-   l'agente risponde che il materiale non lo descrive, mentre il contenuto c'è (p.9-10).
+**`paraphrase-multilingual-MiniLM-L12-v2` for embeddings.** It runs locally, it's free, it has
+384 dimensions, and unlike `all-MiniLM-L6-v2` (the initial model) it handles Italian, including
+Italian questions on English material: hit@3 goes from 0.33 to 0.57 on the eval set (see
+[Retrieval quality](#retrieval-quality)). The important point: the embedding model and the
+generative model are *independent* choices. Changing the generative model costs one line;
+changing the embedding model forces re-indexing the whole corpus and invalidates every quality
+measurement made before.
 
-2. **Lo stato conversazionale è in RAM.** `MemorySaver` non persiste: riavvii il
-   processo e la cronologia sparisce. Il nome sessione nella UI sopravvive ai refresh
-   della pagina, non ai riavvii del server.
+**Qdrant instead of FAISS.** Multi-tenancy needs filtering on the payload (see Phase 1): FAISS
+doesn't have it, and migrating later would have cost more than picking it up front.
 
-3. **`save_study_note` perde le citazioni.** Le risposte in chat citano file e pagina
-   correttamente, ma il testo che finisce nell'appunto salvato spesso no.
+**A router node instead of a stricter system prompt.** A prompt is a statistical suggestion, not
+a constraint: a 7B model ignores it. Before the router, asked "what's the carbonara recipe?", the
+agent answered with the recipe without calling any tool. Now the graph closes that path
+structurally.
 
-4. **Il router costa una chiamata LLM per turno**, anche solo per rifiutare. Su un 7B
-   in locale si sente. Un gate basato su similarità di embedding farebbe lo stesso
-   lavoro in millisecondi.
+**Routing fails open.** The refusal triggers only on an explicit `FUORI_TEMA` match; any other
+output goes to the agent. Turning down a legitimate question does more harm than letting an
+off-topic one through, which won't find anything in the material anyway.
 
-5. **Il routing si basa su un match di sottostringa.** Se il prompt cambia e il modello
-   inizia a rispondere `OFF_TOPIC`, il router smette di rifiutare *in silenzio*.
+**Authentication fails closed.** The opposite choice, on purpose. An empty `ALLOWED_EMAILS` lets
+nobody in, a request without a session gets a 401, and an invalid `owner_id` raises an error
+instead of falling back to a default. Letting the wrong person in can't be undone; asking the
+right person to log in again costs a click.
 
-6. **Single tenant.** Un retriever globale, nessuna nozione di utente.
+---
+
+## Known limitations
+
+Things that don't work, or only half work. In order of severity.
+
+1. **Retrieval misses 4 questions out of 10.** Hit@3 = 0.57 on the eval set (see
+   [Retrieval quality](#retrieval-quality)): in almost half of the cases the agent doesn't get
+   the right slide and answers with what it has. The worst case is `3_RcercaNonInformata.pdf`
+   (2/10), including the known case: asked about "best-first", the agent replies that the
+   material doesn't describe it, while the content is there (pp. 9-10).
+
+2. **Conversation state lives in RAM.** `MemorySaver` doesn't persist: restart the process and
+   the history is gone. The session name in the UI survives page refreshes, not server restarts.
+
+3. **New users start empty.** Indexing is a CLI command run by whoever operates the server: a new
+   Google account gets an `owner_id` with no documents, until someone indexes PDFs for it or
+   links it to an existing owner. Upload from the UI comes with Phase 5.
+
+4. **`save_study_note` loses the citations.** Chat answers cite file and page correctly, but
+   the text that ends up in the saved note often doesn't.
+
+5. **Notes can't be read back from the web UI.** They're written to `notes/<owner_id>/` on the
+   server's disk. Fine for the CLI, but a web user has no way to open them.
+
+6. **The router costs one LLM call per turn**, even just to refuse. On a local 7B you can feel
+   it. A gate based on embedding similarity would do the same job in milliseconds.
+
+7. **Routing relies on a substring match.** If the prompt changes and the model starts answering
+   `OFF_TOPIC`, the router stops refusing, *silently*.
 
 ---
 
 ## Roadmap
 
-Il progetto viene esteso verso un servizio multi-utente. L'obiettivo è didattico: ogni
-fase esiste per capire una tecnologia, non perché il carico la richieda.
+The project is being extended into a multi-user service. The goal is learning: each phase exists
+to understand a technology, not because the load requires it.
 
-### Fase 0 — Fondamenta *(in corso)*
+### Phase 0 — Foundations *(done)*
 
 - [x] `pyproject.toml` + `uv.lock`
-- [x] `docker-compose.yml` per Qdrant
+- [x] `docker-compose.yml` for the backing services
 - [x] README
-- [x] Eval set: 30 domande con pagina attesa, metriche hit-rate@k e MRR@k
-- [ ] Test (routing, chunking, contratto dei tool) con `llm.invoke` mockato
-- [x] `config.py` centralizzato
+- [x] Eval set: 30 questions with the expected page, hit-rate@k and MRR@k metrics
+- [x] Tests (routing, chunking, tool contract) with a fake LLM
+- [x] Centralized `config.py`
+- [x] `ruff` for linting and formatting
 
-L'eval set viene prima di tutto il resto perché è lo strumento con cui si misurano le
-scelte successive. Senza, il confronto fra due modelli è un'opinione.
+The eval set comes before everything else because it's the instrument every later choice is
+measured with. Without it, comparing two models is a matter of opinion.
 
-### Fase 1 — Multi-tenancy nel codice
+### Phase 1 — Multi-tenancy in the code *(done)*
 
-Nessuna infrastruttura nuova.
+No new infrastructure.
 
-- `owner_id` nei metadata dei documenti a ingestion time
-- Payload index su `metadata.owner_id` con `is_tenant=True`, che partiziona lo storage
-  per tenant. **Non** una collection per utente: Qdrant lo sconsiglia, ogni collection
-  ha segmenti e indici propri e l'overhead esplode col numero di utenti
-- Retriever lazy (`@lru_cache`) al posto del globale a import time
-- Tool costruiti **per richiesta**, con `owner_id` chiuso per closure
+- [x] `owner_id` in the document metadata at ingestion time (`--owner`)
+- [x] Payload index on `metadata.owner_id` with `is_tenant=True`, which partitions storage by
+  tenant. **Not** one collection per user: Qdrant advises against it, since every collection
+  has its own segments and indexes and the overhead explodes with the number of users
+- [x] Lazy retriever (`@lru_cache`) instead of the global built at import time
+- [x] Tools built **per request**, with `owner_id` captured by a closure
+- [x] `owner_id` validated (`^[a-z0-9_-]{1,64}$`) wherever it comes in: it ends up in Qdrant
+  filters and in file paths (`notes/<owner_id>/`)
+- [x] Isolation tests on an in-memory Qdrant: search, file listing and re-indexing never cross
+  owners
 
-> **Regola di sicurezza.** `owner_id` non deve mai essere un parametro del tool. Gli
-> argomenti dei tool li riempie l'LLM: metterlo in firma significherebbe consegnare il
-> controllo degli accessi a chiunque sappia scrivere *"cerca nei documenti di
-> owner_id=altro_utente"*. Deve arrivare dalla sessione server-side e non essere
-> esprimibile dal modello.
+> **Security rule.** `owner_id` must never be a tool parameter. Tool arguments are filled in by
+> the LLM: putting it in the signature would hand access control to anyone who can type
+> *"search the documents of owner_id=another_user"*. It has to come from the server-side session
+> and not be expressible by the model. A test checks that no tool exposes it.
 
-### Fase 2 — Autenticazione: FastAPI + Keycloak
+### Phase 2 — Authentication: FastAPI + Google OIDC *(done)*
 
-Gradio non ha un posto dove mettere l'autenticazione. FastAPI sotto, Gradio montato
-sopra con `gr.mount_gradio_app`.
+Gradio has nowhere to put authentication. FastAPI goes underneath, with Gradio mounted on top at
+`/chat` through `gr.mount_gradio_app`: on every request Gradio asks FastAPI who the user is
+(`auth_dependency`), and without a session it answers 401.
 
-- **Keycloak** come provider OIDC, in docker-compose. Scelto sugli hosted per vedere il
-  protocollo da dentro; essendo OIDC standard, passare a Cognito più avanti è quasi
-  solo cambio di configurazione
-- La claim `sub` del token diventa `owner_id` — mai un id utente inviato dal client
-- Validazione della firma JWT contro il JWKS del provider, più controllo di `iss`,
-  `aud`, `exp`
-- `thread_id = f"{sub}:{conversation_id}"`
+- [x] **Google as the OIDC provider**, through Authlib: authorization code flow with PKCE
+- [x] ID token validated by Authlib against Google's JWKS: signature, `iss`, `aud`, `exp`, `nonce`
+- [x] Allowlist (`ALLOWED_EMAILS`), verified emails only. Empty list = nobody gets in
+- [x] External identity mapped to an internal `owner_id` on **PostgreSQL**
+- [x] Signed session cookie that carries the `owner_id`, never the Google tokens. `Secure` by
+  default
+- [x] `thread_id = f"{owner_id}:{session}"`: one user's "sessione-1" isn't another user's
+- [x] Tests with a fake provider: unverified email, email not in the allowlist, empty allowlist,
+  provider error, login, logout
 
-> OAuth2 da solo non basta: è un protocollo di *autorizzazione*, risponde a "questo
-> client può accedere a questa risorsa". Serve OIDC, che è il livello di
-> *autenticazione* costruito sopra OAuth2 e risponde a "chi è questo utente".
+**Google instead of Keycloak.** The original plan was a self-hosted Keycloak, to see the protocol
+from the inside. A hosted provider means one less service to run and secure, and the protocol is
+the same: since it's standard OIDC, moving to Keycloak, Cognito or Entra ID is mostly
+configuration (issuer URL, client ID and secret).
 
-### Fase 3 — Osservabilità
+**Why not use `sub` directly as the `owner_id`.** `sub` is unique only within its issuer: two
+providers can hand out the same `sub` to two different people, so the key is the `(iss, sub)`
+pair. The indirection also makes accounts portable: linking a second login, or moving to another
+provider, is an `UPDATE` on one table instead of rewriting the `owner_id` of every chunk in
+Qdrant. The `owner_id` is random (`u_` + 16 hex characters) and never comes from the client.
 
-Deliberatamente **prima** della cache: senza una misura di partenza non si può
-dimostrare che l'ottimizzazione abbia funzionato.
+**Why PostgreSQL rather than SQLite.** SQLite is a file on one machine's disk: with two replicas
+of the server, each would have its own identity table, and the same person would get a different
+`owner_id` depending on which replica handled the login. PostgreSQL is a shared service, and it's
+also where the LangGraph checkpointer will live in Phase 4.
 
-- **Langfuse** (self-hosted) per il livello LLM: una traccia per richiesta con uno span
-  per nodo del grafo, più token e costo per chiamata. È ciò che risponde a "dove è
-  lento": router, embedding, ricerca Qdrant o generazione?
-- **Prometheus + Grafana** per il livello servizio: latenza HTTP per percentile,
-  throughput, tasso di errore, hit rate della cache
-- Strumentazione OpenTelemetry sui nodi del grafo
+> OAuth2 alone isn't enough: it's an *authorization* protocol, and answers "can this client
+> access this resource?". What's needed is OIDC, the *authentication* layer built on top of
+> OAuth2, which answers "who is this user?".
 
-I due livelli rispondono a domande diverse. Grafana dice *che* la p95 è 8 secondi; la
-traccia dice che 6 di quegli 8 sono la chiamata del router.
+### Next up — CI with GitHub Actions
 
-### Fase 4 — Redis: cache semantica e controllo dei costi
+The tests already run without Qdrant or Ollama, so CI is cheap to add and comes next:
 
-- **Cache a due livelli.** Primo: hash della domanda normalizzata, match esatto,
-  istantaneo. Secondo: embedding della domanda e ricerca vettoriale fra le domande già
-  viste (Redis Stack ha HNSW nativo); sopra soglia, si restituisce la risposta in
-  cache. In un contesto didattico, dove trenta studenti chiedono le stesse cose nella
-  settimana d'esame, il risparmio è sostanziale
-- **Rate limit per `sub`** (token bucket) e budget mensile per utente
-- **Checkpointer su Postgres** (`langgraph-checkpoint-postgres`) al posto di
-  `MemorySaver`
+- On every push and pull request: `uv sync --locked`, `ruff check`, `ruff format --check`,
+  `pytest`
+- A PostgreSQL service container, so the identity tests run instead of being skipped
+- uv cache between runs: the heavy part of the install is PyTorch, pulled in by
+  `sentence-transformers`
+- Status badge at the top of this README
 
-> **La cache va partizionata per tenant.** Con documenti per utente, una cache globale
-> sulla domanda farebbe trapelare la risposta dell'utente A all'utente B che pone la
-> stessa domanda. La chiave deve includere `owner_id`.
+### Phase 3 — Observability
 
-> Il checkpointer su Postgres non è rifinitura: con più repliche, `MemorySaver` tiene
-> la conversazione nella RAM di *un* processo e il turno successivo può arrivare a un
-> altro, che non ne sa nulla. Le sessioni si rompono in modo intermittente. È il
-> prerequisito per scalare orizzontalmente.
+Deliberately **before** the cache: without a baseline there's no way to prove that the
+optimization worked.
 
-### Fase 5 — Ingestion asincrona: Celery
+- **Langfuse** (self-hosted) for the LLM layer: one trace per request with one span per graph
+  node, plus tokens and cost per call. It's what answers "where is it slow": router, embedding,
+  Qdrant search or generation?
+- **Prometheus + Grafana** for the service layer: HTTP latency by percentile, throughput, error
+  rate, cache hit rate
+- OpenTelemetry instrumentation on the graph nodes
 
-L'upload di un PDF non può bloccare una richiesta HTTP: chunking ed embedding di un
-documento lungo durano minuti.
+The two layers answer different questions. Grafana says *that* the p95 is 8 seconds; the trace
+says that 6 of those 8 are the router call.
 
-- **Celery con Redis come broker.** Scelto perché l'ingestion è una *coda di lavoro*
-  (esegui questo job una volta, con retry e stato), non un flusso di eventi. E Redis in
-  questa fase c'è già: zero infrastruttura aggiuntiva
-- SQS sarebbe l'alternativa se l'obiettivo fosse specificamente la pratica su AWS
+### Phase 4 — Redis: semantic cache and cost control
 
-### Fase 6 — Kafka sugli eventi d'uso
+- **Two-level cache.** First level: hash of the normalized question, exact match, instant. Second
+  level: embedding of the question and vector search among the questions already seen (Redis
+  Stack has native HNSW); above a threshold, the cached answer is returned. In a course setting,
+  where thirty students ask the same things in exam week, the savings are substantial
+- **Rate limit per `owner_id`** (token bucket) and a monthly budget per user
+- **Postgres checkpointer** (`langgraph-checkpoint-postgres`) instead of `MemorySaver`, on the
+  PostgreSQL instance that's already there since Phase 2
 
-Kafka **non** sul percorso della chat: una conversazione è richiesta/risposta sincrona,
-non ci sarebbe niente da disaccoppiare e si aggiungerebbe solo latenza.
+> **The cache has to be partitioned by tenant.** With per-user documents, a global cache keyed on
+> the question would leak user A's answer to user B asking the same question. The key must
+> include the `owner_id`.
 
-Dove la forma è davvero a eventi: ogni chiamata LLM emette
-`{tenant, modello, token, costo, latenza}` su un topic; consumer indipendenti aggregano
-i costi per tenant, alimentano i budget della fase 4 e riempiono le dashboard della
-fase 3. Log append-only, più consumer, replay: è il caso d'uso per cui Kafka esiste.
+> The Postgres checkpointer isn't polish: with several replicas, `MemorySaver` keeps the
+> conversation in the RAM of *one* process, and the next turn can land on another process that
+> knows nothing about it. Sessions break intermittently. It's the prerequisite for scaling
+> horizontally.
 
-### Fase 7 — Amazon Bedrock
+### Phase 5 — Asynchronous ingestion: Celery
 
-- `ChatBedrockConverse` da `langchain-aws` al posto di `ChatOllama`
-- Credenziali via IRSA, non chiavi statiche
-- **L'esperimento:** stesso eval set sui due modelli, confronto su qualità, latenza e
-  costo per domanda. È il contenuto più interessante che uscirà da questo repo
-- Il modello di embedding resta MiniLM: cambiarlo imporrebbe di re-indicizzare tutto
+Uploading a PDF can't block an HTTP request: chunking and embedding a long document take minutes.
 
+- **Upload from the UI**, so that users can add their own material without the CLI
+- **Celery with Redis as the broker.** Chosen because ingestion is a *job queue* (run this job
+  once, with retries and status), not an event stream. And by this phase Redis is already there:
+  zero extra infrastructure
+- SQS would be the alternative if the goal were specifically practice with AWS
 
+### Phase 6 — Kafka for usage events
 
+Kafka is **not** on the chat path: a conversation is synchronous request/response, there would be
+nothing to decouple and it would only add latency.
+
+Where the shape really is event-driven: every LLM call emits
+`{tenant, model, tokens, cost, latency}` to a topic, and independent consumers aggregate costs
+per tenant, feed the budgets of Phase 4 and fill the dashboards of Phase 3. Append-only log,
+multiple consumers, replay: the use case Kafka exists for.
+
+### Phase 7 — Amazon Bedrock
+
+- `ChatBedrockConverse` from `langchain-aws` instead of `ChatOllama`
+- Credentials through IRSA, not static keys
+- **The experiment:** the eval questions answered end to end by both models, compared on quality,
+  latency and cost per question. It's the most interesting content this repo will produce
+- The embedding model stays the same: changing it would force re-indexing everything
+
+---
+
+## License
+
+The code is released under the [MIT License](LICENSE). The course PDFs aren't part of the
+repository and aren't covered by it.

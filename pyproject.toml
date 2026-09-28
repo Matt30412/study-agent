@@ -1,29 +1,44 @@
 [project]
 name = "study-agent"
 version = "0.1.0"
-description = "Agente RAG sul materiale di un corso universitario di Intelligenza Artificiale"
+description = "Agentic RAG study assistant for a university Artificial Intelligence course"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 
 dependencies = [
+    "authlib>=1.8.0",
+    "fastapi>=0.141.1",
     "gradio>=6.28.0",
-    "langchain-community>=0.4.2",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
     "langchain-core>=1.6.3",
     "langchain-huggingface>=1.2.2",
     "langchain-ollama>=1.1.0",
     "langchain-qdrant>=1.1.0",
     "langchain-text-splitters>=1.1.2",
     "langgraph>=1.2.12",
+    "psycopg[binary]>=3.3.6",
     "pypdf>=6.19.0",
     "python-dotenv>=1.2.3",
     "sentence-transformers>=6.1.0",
+    "uvicorn>=0.53.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.16.9",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# La lunghezza del codice la gestisce ruff format; stringhe e prompt non vanno spezzati.
+ignore = ["E501"]
